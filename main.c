@@ -46,7 +46,7 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 #define RPI_ADDRESS 0x10
-#define ARDUINO_COUNT 6
+#define ARDUINO_COUNT 9
 #define ARDUINO_BASE_ADDRESS 0x20
 /* USER CODE END PV */
 
@@ -105,17 +105,46 @@ int main(void)
   while (1)
   {
 	  uint8_t buffer[2];
+	  uint8_t ack_buffer[2];
+	  uint8_t arduino_ack;
+	  uint8_t arduinoAddress;
 	  HAL_I2C_Master_Receive(&hi2c1, RPI_ADDRESS << 1, buffer, 2, HAL_MAX_DELAY);
 
 	  flagValue = buffer[0];
 	  targetDevice = buffer[1];
 
+	  ack_buffer[0] = targetDevice;
+	  ack_buffer[1] = 0xFF;
+
 
 	  if (targetDevice < ARDUINO_COUNT)
-	      {
-		  	  uint8_t arduinoAddress = ARDUINO_BASE_ADDRESS + targetDevice;
-	          HAL_I2C_Master_Transmit(&hi2c1, arduinoAddress << 1, &flagValue, 1, HAL_MAX_DELAY);
-	      }
+	  	  {
+	  		  uint8_t arduinoAddress = ARDUINO_BASE_ADDRESS + targetDevice;
+	  		  HAL_StatusTypeDef transmit_status = HAL_I2C_Master_Transmit(&hi2c1, arduinoAddress << 1, &flagValue, 1, HAL_MAX_DELAY);
+	  	  }
+	  else
+	  {
+		  ack_buffer[1] = 0x03; // Неверный адрес устройства
+	  }
+	  if (transmit_status == HAL_OK)
+	  	  {
+		  	  HAL_StatusTypeDef receive_status = HAL_I2C_Master_Receive(&hi2c1, arduinoAddress << 1, &arduino_ack, 1, 1000);
+
+		  	  if (receive_status == HAL_OK && arduino_ack == 0xAA)
+		  	  	  {
+		  		  	  ack_buffer[1] = 0x00; // Успех
+		  	  	  }
+		  	  else
+		  	  {
+		  		ack_buffer[1] = 0x02; // Ошибка подтверждения от Arduino
+		  	  }
+	  	  }
+	  else
+	  {
+		  ack_buffer[1] = 0x01; // Ошибка передачи на Arduino
+	  }
+
+	  HAL_I2C_Master_Transmit(&hi2c1, RPI_ADDRESS << 1, ack_buffer, 2, HAL_MAX_DELAY);
 
 	  HAL_Delay(100);
     /* USER CODE END WHILE */
@@ -281,3 +310,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
